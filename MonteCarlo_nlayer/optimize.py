@@ -408,9 +408,9 @@ def optimize_F(beta, model, psi0_set, batch, nthermal, nsample, ninterval, Nlaye
         params = optax.apply_updates(params, updates)
         return params, opt_state, loss, grad, key
 
-    opt_nstep = 200
+    opt_nstep = 400
 
-    F_exact = make_free_energy_ED(beta, model.L, model.N, model.t, model.U)
+    #F_exact = make_free_energy_ED(beta, model.L, model.N, model.t, model.U)
 
     loss_all = []
     for istep in range(opt_nstep):
@@ -425,8 +425,8 @@ def optimize_F(beta, model, psi0_set, batch, nthermal, nsample, ninterval, Nlaye
         #print(params)
         print('taus:')
         print(params[-2*Nlayer:])
-        print('loss, exact:', loss, F_exact)
-        #print('loss:', loss)
+        #print('loss, exact:', loss, F_exact)
+        print('loss:', loss)
         loss_all.append(loss)
         #if abs(loss - F_exact) < 1e-2 * 5:
         #    break
@@ -550,14 +550,14 @@ def test_optimize_En():
 
 
 def test_optimize_F():
-    L = 6
+    L = 16
     N = int(L/2)
     t = 1.
     U = 1.
     model = Hubbard_1d(L, N, t, U)
 
     #psi0_set = model.get_psi0_full()
-    npsi0 = 2
+    npsi0 = 8
     psi0_set = model.get_psi0_nset(npsi0)
     psi0_set = jnp.array(psi0_set)
     print(psi0_set.shape[0])
@@ -565,7 +565,7 @@ def test_optimize_F():
     nthermal = 50
     nsample = 10
     ninterval = 1
-    batch = 100
+    batch = 1000
 
     nlayer = 1
     beta = 1.
