@@ -44,6 +44,19 @@ def test_get_psi0_full():
     psi0_set = model.get_psi0_full()
     for psi0 in psi0_set:
         print(psi0)
+
+def test_get_psi0_nset():
+    L = 2
+    N = int(L/2)
+    t = 1.
+    U = 2.
+    model = Hubbard_1d(L, N, t, U)
+
+    psi0_set = model.get_psi0_nset(4)
+    print("len_psi0_set:", len(psi0_set))
+
+    for psi0 in psi0_set:
+        print(psi0)
  
 def test_get_ground_energy():
     L = 4
@@ -64,4 +77,5 @@ def test_get_ground_energy():
 #test_Nspin()
 #test_get_psi0_half()
 #test_get_psi0_full()
-test_get_ground_energy()
+test_get_psi0_nset()
+#test_get_ground_energy()
