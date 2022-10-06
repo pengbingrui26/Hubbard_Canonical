@@ -548,7 +548,7 @@ def test_optimize_En():
 
     optimize_En(model, psi0, batch, nthermal, nsample, ninterval, Nlayer)
 
- 
+
 def test_optimize_F():
     L = 6
     N = int(L/2)
