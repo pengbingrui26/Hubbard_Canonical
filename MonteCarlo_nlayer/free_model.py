@@ -80,12 +80,12 @@ class Hubbard_1d(object):
     def get_psi0_nset(self, n_psi0):
         psi0_full_set = []
         psi0_half_set = self.get_psi0_half()
-        #n_psi0 = len(psi0_half_set)
+        npsi0_half = len(psi0_half_set)
         stop = False
-        for i in range(n_psi0):
+        for i in range(npsi0_half):
             if stop == True:
                 break
-            for j in range(n_psi0):
+            for j in range(npsi0_half):
                 if len(psi0_full_set) == n_psi0:
                     stop = True
                     break
@@ -106,6 +106,8 @@ class Hubbard_1d(object):
         eigvecs = eigvecs[:,idx]
         return eigvecs 
 
+
+"""
     def get_U(self):
         return self.U * jnp.identity(self.L*2)
 
@@ -122,6 +124,7 @@ class Hubbard_1d(object):
         matr_init = jnp.zeros((self.L*2, self.L*2))
         Nspin_down = matr_init.at[self.L:, self.L:].set(jnp.identity(self.L))
         return Nspin_down
+"""
 
 
 
