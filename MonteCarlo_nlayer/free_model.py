@@ -62,7 +62,6 @@ class Hubbard_1d(object):
         psi_full = psi_full.at[self.L:, self.N:].set(psi_down)
         return psi_full 
 
-
     def get_psi0_full(self):
         psi0_full_set = []
         psi0_half_set = self.get_psi0_half()
@@ -78,13 +77,18 @@ class Hubbard_1d(object):
                 psi0_full_set.append(psi0_full)
         return psi0_full_set
 
-
     def get_psi0_nset(self, n_psi0):
         psi0_full_set = []
         psi0_half_set = self.get_psi0_half()
         #n_psi0 = len(psi0_half_set)
+        stop = False
         for i in range(n_psi0):
+            if stop == True:
+                break
             for j in range(n_psi0):
+                if len(psi0_full_set) == n_psi0:
+                    stop = True
+                    break
                 psi0_up = psi0_half_set[i]                
                 psi0_down = psi0_half_set[j]
                 #psi0_full = jnp.vstack((psi0_up, psi0_down))                
