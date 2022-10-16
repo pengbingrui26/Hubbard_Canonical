@@ -222,7 +222,23 @@ def test22():
     brr = fn_pmapped(arr)
     print(brr)
 
+def test23():
+    arr = jnp.array([ [1, 1], [2, 2], [3, 3] ])
+    brr = jnp.concatenate(arr, axis = 0)
+    print(brr)
+    crr = jnp.array([ [ [1, 1], [2, 2], [3, 3] ], \
+                      [ [11, 11], [22, 22], [33, 33] ], \
+                      [ [111, 111], [222, 222], [333, 333] ], \
+                      [ [1111, 1111], [2222, 2222], [3333, 3333] ] ])
+    print(crr.shape)
+    drr = jnp.concatenate(crr, axis = 0)
+    print(drr)
 
+    err = jnp.split(crr, 2)
+    print(err)
+
+
+def test24():
 
 # ======================================================================
 
@@ -247,5 +263,6 @@ def test22():
 #test19()
 #test20()
 #test21()
-test22()
+#test22()
+test23()
 
