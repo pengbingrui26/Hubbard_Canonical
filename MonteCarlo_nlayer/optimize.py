@@ -134,7 +134,7 @@ make_En_and_grad_vmapped = jax.vmap(make_En_and_grad, in_axes = (None, 0, 0, Non
 # sample sign, eloc, W, d_eloc/d_t, d_W/d_t 
 @partial(jax.jit, static_argnums = (0, 4, 7, 8))
 def sample_fori_loop(model, sigma, psi0, key_flip, batch, taus, nthermal, nsample, ninterval):
-    nlayer = int(taus.shape[-1]/2)
+    #nlayer = int(taus.shape[-1]/2)
     make_W, make_Eloc, make_eloc = init_fn(model)
 
     make_W_vmapped = jax.vmap(make_W, in_axes = (None, 0, None), out_axes = (0, 0))
@@ -271,19 +271,23 @@ def make_En_and_grad_new(model, sigma, psi0, key, batch, taus, nthermal, nsample
     numerator = sign.mean().real
 
     gradient= dominator / numerator
-    print("sign_mean:")
-    print(sign.mean())
+    #print("sign_mean:")
+    #print(sign.mean())
 
     end = time.time()
     print("time for computing loss and grad:", end - start)
 
-    return E_mean, gradient 
+    return E_mean, gradient, sign.mean()
 
 
-#make_En_and_grad_new_vmapped = jax.vmap(make_En_and_grad_new, in_axes = (None, None, 0, 0, None, None, None, None, None), out_axes = (0, 0))
+make_En_and_grad_new_vmapped = jax.vmap(make_En_and_grad_new, in_axes = (None, None, 0, 0, None, None, None, None, None), \
+                                       out_axes = (0, 0, 0))
 
-make_En_and_grad_new_pmapped = jax.pmap(make_En_and_grad_new, in_axes = (None, None, 0, 0, None, None, None, None, None), \
-                                       out_axes = (0, 0), static_broadcasted_argnums = (0, 4, 7, 8))
+#make_En_and_grad_new_pmapped = jax.pmap(make_En_and_grad_new, in_axes = (None, None, 0, 0, None, None, None, None, None), \
+#                                       out_axes = (0, 0, 0), static_broadcasted_argnums = (0, 4, 7, 8))
+
+make_En_and_grad_new_pmapped = jax.pmap(make_En_and_grad_new_vmapped, in_axes = (None, None, 0, None, None, None, None, None, None), \
+                                       out_axes = (0, 0, 0), static_broadcasted_argnums = (0, 4, 7, 8))
 
 
 # =========================================================================================================
@@ -348,21 +352,26 @@ make_grad_logp = jax.jacrev(make_logp, argnums = 0)
 
 
 def make_loss_grad(beta, model, sigma, psi0_set, key, batch, params, nthermal, nsample, ninterval):
-    qq = params[:psi0_set.shape[0]]
+    # psi0_set has shape of (npmap, npsi0/npmap, model.L*2, model.N)
+    npsi0 = psi0_set.shape[0] * psi0_set.shape[1]
+    qq = params[:npsi0]
     pp = jax.nn.softmax(qq)
-    #grad_pp = jax.jacrev(make_p, argnums = 0)  # the Jacobi has shape pp.shape, qq.shape), with the (i, j)-th element being dp_i / dq_j
-
-    start = time.time()
     grad_log_pp = make_grad_logp(qq)
-    end = time.time()
-    #print("time for computing grad_logp:", end - start)
 
     S_all = 1./beta * jnp.log(pp) 
 
-    key_set = jax.random.split(key, psi0_set.shape[0])
-    taus = params[psi0_set.shape[0]:]
+    key_set = jax.random.split(key, psi0_set.shape[1])
+    taus = params[npsi0:]
 
-    E_all, grad_E_all = make_En_and_grad_new_pmapped(model, sigma, psi0_set, key_set, batch, taus, nthermal, nsample, ninterval)
+    # psi0_set has shape of (npmap, npsi0/npmap, model.L*2, model.N)
+    E_all, grad_E_all, sign_mean = make_En_and_grad_new_pmapped(model, sigma, psi0_set, key_set, batch, taus, nthermal, nsample, ninterval)
+    # E_all has shape of (npmap, npsi0/npmap)
+    # grad_E_all has shape of (npmap, npsi0/npmap, ntau)
+    # sign_mean has shape of (npmap, nspi0/npmap)
+
+    E_all = jnp.concatenate(E_all, axis = 0)
+    grad_E_all = jnp.concatenate(grad_E_all, axis = 0)
+    sign_mean = jnp.concatenate(sign_mean, axis = 0)
 
     F = jnp.dot(pp, S_all + E_all)
 
@@ -373,7 +382,7 @@ def make_loss_grad(beta, model, sigma, psi0_set, key, batch, params, nthermal, n
 
     grad_F = jnp.hstack((grad_F_qq, grad_F_taus))
     
-    return F, grad_F
+    return F, grad_F, sign_mean.mean().real
 
 
 def make_free_energy_ED(beta, L, N, t, U):
@@ -383,7 +392,8 @@ def make_free_energy_ED(beta, L, N, t, U):
 
 
 def optimize_F(beta, model, psi0_set, batch, nthermal, nsample, ninterval, Nlayer):
-    qq = jnp.array([0.1] * psi0_set.shape[0])    
+    npsi0 = psi0_set.shape[0] * psi0_set.shape[1]
+    qq = jnp.array([0.1] * npsi0)    
     taus = jnp.array([0.2] * 2 * Nlayer) 
     params = jnp.hstack((qq, taus))
 
@@ -403,19 +413,20 @@ def optimize_F(beta, model, psi0_set, batch, nthermal, nsample, ninterval, Nlaye
     def step(params, opt_state, key):
         key_old, key = jax.random.split(key, 2)
 
-        loss, grad = make_loss_grad(beta, model, sigma_init, psi0_set, key, batch, params, nthermal, nsample, ninterval)
+        loss, grad, sign_mean = make_loss_grad(beta, model, sigma_init, psi0_set, key, batch, params, nthermal, nsample, ninterval)
         updates, opt_state = optimizer.update(grad, opt_state, params)
         params = optax.apply_updates(params, updates)
-        return params, opt_state, loss, grad, key
+        return params, opt_state, loss, grad, sign_mean, key
 
-    opt_nstep = 400
+    opt_nstep = 1000
 
-    #F_exact = make_free_energy_ED(beta, model.L, model.N, model.t, model.U)
+    F_exact = make_free_energy_ED(beta, model.L, model.N, model.t, model.U)
 
     loss_all = []
+    sign_mean_all = []
     for istep in range(opt_nstep):
         start = time.time()
-        params, opt_state, loss, grad, key = step(params, opt_state, key)
+        params, opt_state, loss, grad, sign_mean, key = step(params, opt_state, key)
         end = time.time()
         print('istep:', istep)
         #print('time for step:', end - start)
@@ -425,21 +436,23 @@ def optimize_F(beta, model, psi0_set, batch, nthermal, nsample, ninterval, Nlaye
         #print(params)
         print('taus:')
         print(params[-2*Nlayer:])
-        #print('loss, exact:', loss, F_exact)
-        print('loss:', loss)
+        print('loss, exact:', loss, F_exact)
+        #print('loss:', loss)
+        print('sign_mean:', sign_mean)
         loss_all.append(loss)
+        sign_mean_all.append(sign_mean)
         #if abs(loss - F_exact) < 1e-2 * 5:
         #    break
         print('\n')
 
-    datas = {"U": model.U, "beta": beta, \
-             "learning_rate": learning_rate, "opt_nstep":opt_nstep, "loss": loss_all}
+    datas = {"U": model.U, "beta": beta, "F_exact": F_exact, \
+             "learning_rate": learning_rate, "opt_nstep":opt_nstep, \
+            "loss": loss_all, "sign_mean": sign_mean_all}
 
     import pickle as pk
     fp = open('./optimize_F', 'wb')
     pk.dump(datas, fp)
     fp.close()
-
 
 
 
@@ -550,24 +563,28 @@ def test_optimize_En():
 
 
 def test_optimize_F():
-    L = 16
+    L = 6
     N = int(L/2)
     t = 1.
-    U = 1.
+    U = 2.
     model = Hubbard_1d(L, N, t, U)
 
     #psi0_set = model.get_psi0_full()
-    npsi0 = 8
+    npsi0 = 320
     psi0_set = model.get_psi0_nset(npsi0)
     psi0_set = jnp.array(psi0_set)
-    print(psi0_set.shape[0])
+    print(psi0_set.shape)
+    npmap = int(npsi0/8)
+    psi0_set = jnp.split(psi0_set, 8)
+    psi0_set = jnp.array(psi0_set)
+    print(psi0_set.shape)
 
     nthermal = 50
-    nsample = 10
+    nsample = 5
     ninterval = 1
     batch = 1000
 
-    nlayer = 1
+    nlayer = 2
     beta = 1.
 
     optimize_F(beta, model, psi0_set, batch, nthermal, nsample, ninterval, nlayer)
@@ -580,3 +597,4 @@ def test_optimize_F():
 #test_make_En_and_grad()
 #test_optimize_En()
 test_optimize_F()
+
